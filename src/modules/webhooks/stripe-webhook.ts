@@ -23,6 +23,8 @@ import {
   UntypedTransactionEventReportDocument,
   TransactionEventTypeEnum,
   TransactionActionEnum,
+  type TransactionUpdateMutation,
+  type TransactionUpdateMutationVariables,
 } from "generated/graphql";
 import { assertUnreachableButNotThrow } from "@/lib/invariant";
 import { __do, unpackPromise } from "@/lib/utils";
@@ -60,6 +62,89 @@ async function processStripeEvent({
     },
     "Got Stripe event",
   );
+
+  if (stripeEvent.type === "payment_intent.succeeded") {
+    const paymentIntent = stripeEvent.data.object;
+    const transactionId = getTransactionIdFromEventData(stripeEvent.data);
+    const stripeCustomerId = paymentIntent.customer;
+    const stripePaymentMethodId = paymentIntent.payment_method;
+
+    if (
+      transactionId &&
+      typeof stripeCustomerId === "string" &&
+      stripeCustomerId.startsWith("cus_") &&
+      typeof stripePaymentMethodId === "string" &&
+      stripePaymentMethodId.startsWith("pm_")
+    ) {
+      logger.info(
+        { transactionId, stripeCustomerId, stripePaymentMethodId: stripePaymentMethodId },
+        "Found Customer and Payment Method IDs in successful PaymentIntent, preparing transactionUpdate",
+      );
+
+      const privateMetadata = JSON.stringify({
+        stripe_customer_id: stripeCustomerId,
+        stripe_payment_method_id: stripePaymentMethodId,
+      });
+
+      // TODO: Add idempotency check here if desired - query transaction(id: transactionId) { privateMetadata }
+
+      // Define the TransactionUpdate mutation document (replace with actual import if available)
+      const UntypedTransactionUpdateDocument = `
+        mutation TransactionUpdate($id: ID!, $privateMetadata: String!) {\
+          transactionUpdate(id: $id, input: { privateMetadata: $privateMetadata }) {\
+            transaction {\
+              id\
+              privateMetadata\
+            }\
+            errors {\
+              field\
+              message\
+              code\
+            }\
+          }\
+        }\
+      `;
+
+      const variables: TransactionUpdateMutationVariables = {
+        id: transactionId,
+        privateMetadata,
+      };
+
+      const { data, error } = await client
+        .mutation<TransactionUpdateMutation, TransactionUpdateMutationVariables>(
+          UntypedTransactionUpdateDocument, // Use the actual imported document if available
+          variables,
+        )
+        .toPromise();
+
+      const errors = [error, ...(data?.transactionUpdate?.errors || [])].filter(Boolean);
+
+      if (errors.length > 0) {
+        const message = errors.map((err: any) => err.message).join("\n");
+        logger.error(
+          { transactionId, errors },
+          "Failed to update transaction privateMetadata with Stripe IDs",
+        );
+        // Decide if this should throw or just log
+        // throw new Error(`Failed to update transaction metadata: ${message}`);
+      } else {
+        logger.info(
+          { transactionId },
+          "Successfully updated transaction privateMetadata with Stripe IDs",
+        );
+      }
+    } else {
+      logger.warn(
+        {
+          transactionId,
+          hasCustomerId: !!stripeCustomerId,
+          hasPaymentMethodId: !!stripePaymentMethodId,
+          intentId: paymentIntent.id,
+        },
+        "payment_intent.succeeded event missing expected transactionId, customerId, or paymentMethodId for metadata update",
+      );
+    }
+  }
 
   const transactionEventReport = await stripeEventToTransactionEventReport({
     appConfig,
