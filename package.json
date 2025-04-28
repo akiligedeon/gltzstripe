@@ -99,7 +99,7 @@
     "@pollyjs/adapter-node-http": "6.0.6",
     "@pollyjs/core": "6.0.6",
     "@pollyjs/persister-fs": "6.0.6",
-    "@saleor/eslint-plugin-saleor-app": "0.1.2",
+    "@saleor/eslint-plugin-saleor-app": "0.2.0",
     "@saleor/json-schema-compiler": "0.1.2",
     "@testing-library/jest-dom": "6.1.5",
     "@testing-library/react": "14.1.2",
