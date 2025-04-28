@@ -54,7 +54,7 @@ jobs:
 
       - name: Approve PR to main
         if: steps.changesets.outputs.hasChangesets == 'false' && steps.changesets.outputs.published == 'true'
-        uses: hmarr/auto-approve-action@v3
+        uses: hmarr/auto-approve-action@v4
         with:
           pull-request-number: ${{ steps.open-pr.outputs.pr_number }}
           github-token: ${{ secrets.PAT }}
